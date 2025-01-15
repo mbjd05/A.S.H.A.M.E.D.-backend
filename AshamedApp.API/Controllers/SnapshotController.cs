@@ -18,15 +18,26 @@ public class SnapshotController(ISnapshotManagerService snapshotManagerService) 
         }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(new { message = "MqttMessage not found.", details = ex.Message });
+            return NotFound(new ProblemDetails
+            {
+                Title = "MqttMessage not found",
+                Detail = ex.Message,
+                Status = StatusCodes.Status404NotFound
+            });
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { message = "An unexpected error occurred while creating the snapshot.", details = ex.Message });
+            return StatusCode(500, new ProblemDetails
+            {
+                Title = "An unexpected error occurred while creating the snapshot",
+                Detail = ex.Message,
+                Status = StatusCodes.Status500InternalServerError
+            });
         }
     }
     
     [HttpGet("{id}")]
+    [ActionName(nameof(GetSnapshotByIdAsync))]
     public async Task<IActionResult> GetSnapshotByIdAsync(int id)
     {
         try
@@ -37,11 +48,21 @@ public class SnapshotController(ISnapshotManagerService snapshotManagerService) 
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = "Snapshot not found", details = e.Message });
+            return NotFound(new ProblemDetails
+            {
+                Title = "Snapshot not found",
+                Detail = e.Message,
+                Status = StatusCodes.Status404NotFound
+            });
         }
         catch (Exception e)
         {
-            return StatusCode(500, new { Message = e.Message });
+            return StatusCode(500, new ProblemDetails
+            {
+                Title = "An error occurred",
+                Detail = e.Message,
+                Status = StatusCodes.Status500InternalServerError
+            });
         }
     }
     
@@ -49,7 +70,6 @@ public class SnapshotController(ISnapshotManagerService snapshotManagerService) 
     public async Task<IActionResult> GetAllSnapshotsAsync()
     {
         var allSnapshots = await snapshotManagerService.GetAllSnapshotsAsync();
-        if (!allSnapshots.Snapshots.Any()) return NotFound();
         return Ok(allSnapshots);
     }
     
@@ -58,23 +78,64 @@ public class SnapshotController(ISnapshotManagerService snapshotManagerService) 
     {
         if (snapshotDto == null)
         {
-            return BadRequest(new { Message = "Request body cannot be null." });
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Invalid input",
+                Detail = "Request body cannot be null.",
+                Status = StatusCodes.Status400BadRequest
+            });
         }
         
-        var existingSnapshot = await snapshotManagerService.GetSnapshotByIdAsync(id);
-        if (existingSnapshot == null)
+        try
         {
-            return NotFound(new { Message = $"Snapshot with ID {id} not found." });
+            var updatedSnapshot = await snapshotManagerService.UpdateSnapshotAsync(id, snapshotDto.Title, snapshotDto.Description);
+            return Ok(updatedSnapshot);
         }
-        
-        var updatedSnapshot = await snapshotManagerService.UpdateSnapshotAsync(id, snapshotDto.Title, snapshotDto.Description);
-        return Ok(updatedSnapshot);
+        catch (KeyNotFoundException e)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Snapshot not found",
+                Detail = e.Message,
+                Status = StatusCodes.Status404NotFound
+            });
+        }
+        catch (Exception e)
+        {
+            return StatusCode(500, new ProblemDetails
+            {
+                Title = "An error occurred",
+                Detail = e.Message,
+                Status = StatusCodes.Status500InternalServerError
+            });
+        }
     }
     
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteSnapshotAsync(int id)
     {
-        await snapshotManagerService.DeleteSnapshotAsync(id);
-        return NoContent();
+        try
+        {
+            await snapshotManagerService.DeleteSnapshotAsync(id);
+            return NoContent();
+        }
+        catch (KeyNotFoundException e)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Snapshot not found",
+                Detail = e.Message,
+                Status = StatusCodes.Status404NotFound
+            });
+        }
+        catch (Exception e)
+        {
+            return StatusCode(500, new ProblemDetails
+            {
+                Title = "An error occurred",
+                Detail = e.Message,
+                Status = StatusCodes.Status500InternalServerError
+            });
+        }
     }
 }
