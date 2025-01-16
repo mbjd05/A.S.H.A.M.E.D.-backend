@@ -54,6 +54,7 @@ public class MqttClientService : IDisposable
             options.UseTls();
             options.WithSslProtocols(SslProtocols.Tls13);
             options.WithCertificateValidationHandler(_ => true);
+            options.WithIgnoreCertificateChainErrors(true);
             
             static X509Certificate2 CreateCertFromPemFile(string certPath, string keyPath)
             {
