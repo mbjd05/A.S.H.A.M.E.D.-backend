@@ -70,7 +70,10 @@ public class MqttClientService : IDisposable
                 var clientCertificateCollection = new X509Certificate2Collection { clientCertificate, caCertificate };
                 options.WithClientCertificates(clientCertificateCollection);
 
-                options.WithCertificateValidationHandler(_ => true);
+                var store = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+                store.Open(OpenFlags.ReadWrite);
+                store.Add(caCertificate);
+                store.Close();
 
                 _logger.LogInformation("TLS certificates set up successfully.");
             }
