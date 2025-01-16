@@ -53,6 +53,7 @@ public class MqttClientService : IDisposable
         {
             options.UseTls();
             options.WithSslProtocols(SslProtocols.Tls13);
+            options.WithCertificateValidationHandler(_ => true);
             
             static X509Certificate2 CreateCertFromPemFile(string certPath, string keyPath)
             {
@@ -69,11 +70,6 @@ public class MqttClientService : IDisposable
                 var caCertificate = new X509Certificate2(_caCert);
                 var clientCertificateCollection = new X509Certificate2Collection { clientCertificate, caCertificate };
                 options.WithClientCertificates(clientCertificateCollection);
-
-                var store = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
-                store.Open(OpenFlags.ReadWrite);
-                store.Add(caCertificate);
-                store.Close();
 
                 _logger.LogInformation("TLS certificates set up successfully.");
             }
