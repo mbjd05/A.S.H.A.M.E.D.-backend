@@ -1,4 +1,3 @@
-using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Security.Authentication;
 using MQTTnet;
@@ -53,8 +52,6 @@ public class MqttClientService : IDisposable
         {
             options.UseTls();
             options.WithSslProtocols(SslProtocols.Tls13);
-            options.WithCertificateValidationHandler(_ => true);
-            options.WithIgnoreCertificateChainErrors(true);
             
             static X509Certificate2 CreateCertFromPemFile(string certPath, string keyPath)
             {
@@ -71,15 +68,12 @@ public class MqttClientService : IDisposable
                 var caCertificate = new X509Certificate2(_caCert);
                 var clientCertificateCollection = new X509Certificate2Collection { clientCertificate, caCertificate };
                 options.WithClientCertificates(clientCertificateCollection);
-
-<<<<<<< HEAD
-=======
+                
                 var store = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
                 store.Open(OpenFlags.ReadWrite);
                 store.Add(caCertificate);
                 store.Close();
-
->>>>>>> 4aea35c (Try to add self signed CA certificate to internal store)
+                
                 _logger.LogInformation("TLS certificates set up successfully.");
             }
             catch (Exception ex)
