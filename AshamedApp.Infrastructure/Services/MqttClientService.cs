@@ -1,5 +1,9 @@
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Security.Authentication;
 using MQTTnet;
 using MQTTnet.Client;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using AshamedApp.Application.DTOs;
 using AshamedApp.Application.Services;
@@ -12,21 +16,22 @@ namespace AshamedApp.Infrastructure.Services;
 public class MqttClientService : IDisposable
 {
     private readonly IMqttClient _mqttClient;
-    private readonly IServiceProvider _serviceProvider; // To create a scope for scoped services
+    private readonly IServiceProvider _serviceProvider;
     private readonly string _topic = "z2m/air-monitor";
-    private readonly string _brokerAddress; // Broker address dynamically loaded from config
+    private readonly string _brokerAddress;
     private readonly int _brokerPort;
     private Dictionary<string, DateTime> _lastMessageTimestamps = new Dictionary<string, DateTime>();
     private readonly ILogger<MqttClientService> _logger;
+    private readonly string _clientCert = "/mqtt-certs/dotnet.crt";
+    private readonly string _clientKey = "/mqtt-certs/dotnet.key";
+    private readonly string _caCert = "/mqtt-certs/ca.crt";
 
     public MqttClientService(IServiceProvider serviceProvider, IConfiguration configuration, ILogger<MqttClientService> logger)
     {
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-
-        // Load configuration from appsettings
         _brokerAddress = configuration["MqttSettings:BrokerAddress"] ?? "localhost";
-        _brokerPort = int.TryParse(configuration["MqttSettings:BrokerPort"], out var port) ? port : 8883;
+        _brokerPort = int.TryParse(configuration["MqttSettings:BrokerPort"], out var port) ? port : 8884;
 
         var mqttFactory = new MqttFactory();
         _mqttClient = mqttFactory.CreateMqttClient();
@@ -34,16 +39,54 @@ public class MqttClientService : IDisposable
 
     public async Task ConnectAsync()
     {
-        var options = new MqttClientOptionsBuilder()
-            .WithWebSocketServer(options => { options.WithUri($"ws://{_brokerAddress}:{_brokerPort}"); })
+        var optionsBuilder = new MqttClientOptionsBuilder()
             .WithClientId($"DotNetClient-{Guid.NewGuid()}")
-            .WithCleanSession()
-            .Build();
+            .WithCleanSession();
+        
+        optionsBuilder.WithWebSocketServer(options =>
+        {
+            options.WithUri($"wss://{_brokerAddress}:{_brokerPort}");
+            _logger.LogInformation($"Configured WebSocket server at wss://{_brokerAddress}:{_brokerPort}.");
+        });
+        
+        optionsBuilder.WithTlsOptions(options =>
+        {
+            options.UseTls();
+            options.WithSslProtocols(SslProtocols.Tls13);
+            
+            static X509Certificate2 CreateCertFromPemFile(string certPath, string keyPath)
+            {
+                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    return X509Certificate2.CreateFromPemFile(certPath, keyPath);
+                
+                using var cert = X509Certificate2.CreateFromPemFile(certPath, keyPath);
+                return new X509Certificate2(cert.Export(X509ContentType.Pkcs12));
+            }
 
+            try
+            {
+                var clientCertificate = CreateCertFromPemFile(_clientCert, _clientKey);
+                var caCertificate = new X509Certificate2(_caCert);
+                var clientCertificateCollection = new X509Certificate2Collection { clientCertificate, caCertificate };
+                options.WithClientCertificates(clientCertificateCollection);
+
+                options.WithCertificateValidationHandler(_ => true);
+
+                _logger.LogInformation("TLS certificates set up successfully.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to set up TLS certificates.");
+            }
+        });
+        
+        var options = optionsBuilder.Build();
+        
         _mqttClient.ApplicationMessageReceivedAsync += HandleReceivedMessage;
 
         try
         {
+            _logger.LogInformation($"Attempting to connect to MQTT broker at {_brokerAddress}:{_brokerPort}...");
             await _mqttClient.ConnectAsync(options);
             await _mqttClient.SubscribeAsync(_topic);
             _logger.LogInformation($"Connected to MQTT broker at {_brokerAddress}:{_brokerPort} and subscribed to topic: {_topic}");
